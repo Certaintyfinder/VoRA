@@ -1,0 +1,51 @@
+bf16: True
+seed: 42
+num_train_epochs: 3  # 医学任务通常需要多几个 epoch 来对齐专业词汇
+per_device_train_batch_size: 4 
+gradient_accumulation_steps: 64 # 保持全局 Batch Size 256
+learning_rate: 2e-5  # 微调阶段使用较小的学习率
+weight_decay: 0.
+warmup_steps: 100
+lr_scheduler_type: "cosine" # 微调建议用 cosine 退火
+logging_steps: 1
+tf32: True
+gradient_checkpointing: true
+dataloader_num_workers: 4
+output_dir: ./output/vora_iu_xray_finetune
+wandb_project: VoRA_Medical
+run_name: iu_xray_finetune
+
+model:
+  llm: Qwen/Qwen2.5-7B-Instruct
+  pretrained: "/content/drive/MyDrive/medAiexp/hf_models" # 关键：加载已经会看图的权重
+  #vision_embedding: "AIMv2Embedding"
+  patch_size: 14
+  image_size: 448
+  #aux_vision: apple/aimv2-huge-patch14-448 # 建议保留蒸馏，增强医疗影像的块级感知
+  lora:
+    layers: 24
+    r: 128 # 保持和我们之前讨论的一致，适配单卡
+    target_modules: [    
+        "self_attn.q_proj", "self_attn.k_proj", "self_attn.v_proj", "self_attn.o_proj",
+        "mlp.up_proj", "mlp.gate_proj", "mlp.down_proj",
+    ]
+
+data:
+  train:
+    data_fetch:
+      data_paths: [
+        {
+          "anno_path": "/content/drive/MyDrive/medAiexp/iu_xray_vora_train.json", # 修改为你的实际路径
+          "image_folder": "/" # 因为你的 JSON 里是绝对路径，这里设为根目录或图片基目录
+        }
+      ]
+    data_preprocess:
+      frames_key: frames
+      label_key: conversations
+      tokenizer: Qwen/Qwen2.5-7B-Instruct
+      max_seq_len: 2048
+      vqa_processor_params:
+        system_start: "<|im_start|>system\n"
+        system_end: "<|im_end|>"
+        system_message: "You are a helpful medical assistant. Analyze the chest X-ray images provided."
+        roles: ["\n<|im_start|>user\n", "<|im_end|>\n<|im_start|>assistant\n"]
